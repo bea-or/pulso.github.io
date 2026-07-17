@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pulso — Monitor de frecuencia cardiaca</title>
+<style>
+  :root{
+    --bg: #0b0d10;
+    --panel: #14171b;
+    --panel-2: #1c2025;
+    --line: #262b31;
+    --text: #eef1f4;
+    --muted: #8a929c;
+    --pulse: #ff5d5d;
+    --pulse-dim: rgba(255,93,93,0.18);
+    --accent: #4fd1c5;
+    --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+    --sans: 'Inter', -apple-system, system-ui, sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    min-height:100vh;
+  }
+  body{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:32px 20px 60px;
+  }
+  .wrap{ width:100%; max-width:920px; }
+
+  header{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    margin-bottom:28px;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  .brand{
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+  }
+  .brand-mark{
+    font-family:var(--mono);
+    font-size:13px;
+    letter-spacing:0.18em;
+    color:var(--pulse);
+    text-transform:uppercase;
+  }
+  h1{
+    font-size:22px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  .status{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .dot{
+    width:7px; height:7px; border-radius:50%;
+    background:var(--muted);
+    transition:background .3s;
+  }
+  .dot.live{ background:var(--pulse); box-shadow:0 0 8px var(--pulse); }
+  .dot.on{ background:var(--accent); }
+
+  .connect-row{
+    display:flex;
+    gap:12px;
+    margin-bottom:28px;
+    flex-wrap:wrap;
+  }
+  .howto{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:12px 16px;
+    margin-bottom:16px;
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--muted);
+  }
+  .howto .howto-label{
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    font-size:10px;
+    color:var(--accent);
+    white-space:nowrap;
+  }
+  .howto .path{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+    color:var(--text);
+  }
+  .howto .path .step{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:4px 8px;
+    white-space:nowrap;
+  }
+  .howto .path .arrow{ color:var(--muted); }
+  button{
+    font-family:var(--sans);
+    font-size:14px;
+    font-weight:600;
+    border:none;
+    border-radius:10px;
+    padding:13px 22px;
+    cursor:pointer;
+    transition:transform .12s ease, opacity .2s;
+  }
+  button:active{ transform:scale(0.97); }
+  button:disabled{ opacity:0.35; cursor:not-allowed; }
+  #connectBtn{
+    background:var(--pulse);
+    color:#0b0d10;
+  }
+  #connectBtn:hover:not(:disabled){ opacity:0.9; }
+  #resetBtn{
+    background:transparent;
+    color:var(--muted);
+    border:1px solid var(--line);
+  }
+  #resetBtn:hover:not(:disabled){ color:var(--text); border-color:var(--muted); }
+  #disconnectBtn{
+    background:transparent;
+    color:var(--pulse);
+    border:1px solid rgba(255,93,93,0.4);
+    display:none;
+  }
+  #disconnectBtn:hover:not(:disabled){ background:var(--pulse-dim); border-color:var(--pulse); }
+
+  .hero{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:28px 28px 20px;
+    margin-bottom:20px;
+    position:relative;
+    overflow:hidden;
+  }
+  .hero-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    margin-bottom:18px;
+  }
+  .bpm-display{
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+  }
+  .bpm-number{
+    font-family:var(--mono);
+    font-size:72px;
+    font-weight:700;
+    line-height:1;
+    color:var(--text);
+    font-variant-numeric:tabular-nums;
+  }
+  .bpm-unit{
+    font-family:var(--mono);
+    font-size:16px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+  }
+  .heart-icon{
+    width:34px; height:34px;
+    animation:none;
+  }
+  .heart-icon.beat{ animation:beat 0.55s ease-out; }
+  @keyframes beat{
+    0%{ transform:scale(1); }
+    30%{ transform:scale(1.35); }
+    60%{ transform:scale(0.95); }
+    100%{ transform:scale(1); }
+  }
+  #chartCanvas{
+    width:100%;
+    height:180px;
+    display:block;
+  }
+  .chart-axis{
+    display:flex;
+    justify-content:space-between;
+    margin-top:4px;
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--muted);
+  }
+
+  .range-toggle{
+    display:inline-flex;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:9px;
+    padding:3px;
+    margin-bottom:16px;
+    gap:2px;
+  }
+  .range-toggle button{
+    font-family:var(--mono);
+    font-size:12px;
+    font-weight:600;
+    padding:7px 14px;
+    border-radius:7px;
+    background:transparent;
+    color:var(--muted);
+    border:none;
+  }
+  .range-toggle button.active{
+    background:var(--panel);
+    color:var(--text);
+  }
+  .range-toggle button:hover:not(.active){ color:var(--text); }
+  .zone-label{
+    position:absolute;
+    top:28px; right:28px;
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--muted);
+    text-align:right;
+  }
+  .zone-val{
+    font-size:20px;
+    color:var(--accent);
+    font-weight:700;
+  }
+
+  .stats-grid{
+    display:grid;
+    grid-template-columns:repeat(5, 1fr);
+    gap:10px;
+    margin-bottom:20px;
+  }
+  .stat{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 10px;
+    min-width:0;
+  }
+  .stat-label{
+    font-size:9px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    margin-bottom:5px;
+    font-family:var(--mono);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .stat-value{
+    font-family:var(--mono);
+    font-size:19px;
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+  }
+  .stat-value.min{ color:#6fb1ff; }
+  .stat-value.avg{ color:var(--accent); }
+  .stat-value.max{ color:var(--pulse); }
+  .stat-value.time{ color:var(--text); }
+  .stat-value.kcal{ color:#f4b942; }
+
+  .profile-row{
+    display:flex;
+    gap:16px;
+    align-items:center;
+    flex-wrap:wrap;
+    margin-bottom:20px;
+    padding:14px 18px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+  }
+  .profile-row .profile-label{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    white-space:nowrap;
+  }
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+  .field label{
+    font-size:10px;
+    color:var(--muted);
+    font-family:var(--mono);
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+  }
+  .field input, .field select{
+    font-family:var(--mono);
+    font-size:13px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:7px;
+    padding:7px 9px;
+    width:78px;
+  }
+  .field select{ width:auto; }
+  .field input:focus, .field select:focus{
+    outline:none;
+    border-color:var(--accent);
+  }
+
+  footer{
+    margin-top:12px;
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--muted);
+    line-height:1.6;
+  }
+  footer a{ color:var(--accent); }
+
+  @media (max-width:640px){
+    .stats-grid{ gap:5px; }
+    .stat{ padding:7px 6px; border-radius:8px; }
+    .stat-label{ font-size:7px; }
+    .stat-value{ font-size:13px; }
+    .profile-row{ gap:12px; }
+    .bpm-number{ font-size:56px; }
+    .zone-label{ position:static; margin-bottom:14px; text-align:left; }
+    .hero-top{ flex-direction:column; align-items:flex-start; gap:12px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .heart-icon.beat{ animation:none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="brand-mark">PULSO</span>
+      <h1>Monitor de frecuencia cardiaca</h1>
+    </div>
+    <div class="status">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Desconectado</span>
+    </div>
+  </header>
+
+  <div class="howto">
+    <span class="howto-label">Para iniciar el broadcast de HR en el reloj</span>
+    <span class="path">
+      <span class="step">Health &amp; Wellness</span>
+      <span class="arrow">→</span>
+      <span class="step">Wrist Heart Rate</span>
+      <span class="arrow">→</span>
+      <span class="step">Broadcast Heart Rate</span>
+    </span>
+  </div>
+
+  <div class="connect-row">
+    <button id="connectBtn">Conectar dispositivo</button>
+    <button id="disconnectBtn">Desconectar</button>
+    <button id="resetBtn" disabled>Reiniciar sesión</button>
+  </div>
+
+  <div class="hero">
+    <div class="zone-label">
+      Zona<br>
+      <span class="zone-val" id="zoneVal">—</span>
+    </div>
+    <div class="hero-top">
+      <div class="bpm-display">
+        <svg class="heart-icon" id="heartIcon" viewBox="0 0 24 24" fill="none">
+          <path d="M12 21s-7.5-4.6-10-9.2C0.3 8.2 2 4.5 5.6 4c2-.3 3.8.6 5 2.2C11.8 4.6 13.6 3.7 15.6 4c3.6.5 5.3 4.2 3.6 7.8C21.5 16.4 12 21 12 21z"
+            fill="var(--pulse)" opacity="0.9"/>
+        </svg>
+        <span class="bpm-number" id="bpmNumber">--</span>
+        <span class="bpm-unit">ppm</span>
+      </div>
+    </div>
+    <div class="range-toggle" id="rangeToggle">
+      <button data-range="1" class="">1 min</button>
+      <button data-range="5" class="">5 min</button>
+      <button data-range="all" class="active">Todos</button>
+    </div>
+    <canvas id="chartCanvas"></canvas></canvas>
+    <div class="chart-axis">
+      <span id="chartTimeStart">0:00</span>
+      <span id="chartTimeEnd">0:00</span>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat">
+      <div class="stat-label">Mínima</div>
+      <div class="stat-value min" id="statMin">--</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Promedio</div>
+      <div class="stat-value avg" id="statAvg">--</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Máxima</div>
+      <div class="stat-value max" id="statMax">--</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Duración</div>
+      <div class="stat-value time" id="statTime">0:00</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Calorías activas</div>
+      <div class="stat-value kcal" id="statKcal">0</div>
+    </div>
+  </div>
+
+  <div class="profile-row">
+    <span class="profile-label">Perfil (para calorías)</span>
+    <div class="field">
+      <label for="inputWeight">Peso (kg)</label>
+      <input type="number" id="inputWeight" value="65" min="30" max="200">
+    </div>
+    <div class="field">
+      <label for="inputAge">Edad</label>
+      <input type="number" id="inputAge" value="25" min="10" max="100">
+    </div>
+    <div class="field">
+      <label for="inputSex">Sexo</label>
+      <select id="inputSex">
+        <option value="F">F</option>
+        <option value="M">M</option>
+      </select>
+    </div>
+  </div>
+
+  <footer>
+    Funciona con Web Bluetooth — requiere Chrome/Edge en escritorio o Android (no compatible con Safari/iOS).<br>
+    Compatible con cualquier monitor BLE que exponga el servicio estándar Heart Rate (0x180D).
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  const connectBtn = document.getElementById('connectBtn');
+  const disconnectBtn = document.getElementById('disconnectBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const bpmNumber = document.getElementById('bpmNumber');
+  const heartIcon = document.getElementById('heartIcon');
+  const zoneVal = document.getElementById('zoneVal');
+  const statMin = document.getElementById('statMin');
+  const statAvg = document.getElementById('statAvg');
+  const statMax = document.getElementById('statMax');
+  const statTime = document.getElementById('statTime');
+  const statKcal = document.getElementById('statKcal');
+  const chartTimeStart = document.getElementById('chartTimeStart');
+  const chartTimeEnd = document.getElementById('chartTimeEnd');
+  const rangeToggle = document.getElementById('rangeToggle');
+  const inputWeight = document.getElementById('inputWeight');
+  const inputAge = document.getElementById('inputAge');
+  const inputSex = document.getElementById('inputSex');
+  const canvas = document.getElementById('chartCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let device = null;
+  let readings = []; // {t, bpm}
+  let startTime = null;
+  let timerInterval = null;
+  let sum = 0, count = 0, minBpm = Infinity, maxBpm = -Infinity;
+  let totalKcal = 0;
+  let lastReadingTime = null;
+  let chartRange = 'all'; // '1', '5', or 'all'
+
+  // Estimate max HR zone using a generic 190 max (can't know user's real max) — shown as relative %
+  const ASSUMED_MAX = 190;
+
+  function fmtTime(sec){
+    const m = Math.floor(sec/60);
+    const s = Math.floor(sec%60).toString().padStart(2,'0');
+    return `${m}:${s}`;
+  }
+
+  function resizeCanvas(){
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    drawChart();
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  function drawChart(){
+    const w = canvas.getBoundingClientRect().width;
+    const h = canvas.getBoundingClientRect().height;
+    ctx.clearRect(0,0,w,h);
+
+    if (readings.length < 2){
+      return;
+    }
+
+    const nowT = readings[readings.length-1].t;
+    let visible;
+    if (chartRange === '1'){
+      visible = readings.filter(r => nowT - r.t <= 60*1000);
+    } else if (chartRange === '5'){
+      visible = readings.filter(r => nowT - r.t <= 5*60*1000);
+    } else {
+      visible = readings;
+    }
+    if (visible.length < 2){
+      chartTimeStart.textContent = '0:00';
+      chartTimeEnd.textContent = '0:00';
+      return;
+    }
+    const t0 = visible[0].t;
+    const tEnd = visible[visible.length-1].t;
+    const totalMs = Math.max(tEnd - t0, 1);
+
+    const bpms = visible.map(r => r.bpm);
+    const lo = Math.min(...bpms) - 5;
+    const hi = Math.max(...bpms) + 5;
+    const range = Math.max(hi - lo, 1);
+
+    // grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    for (let i=0; i<=3; i++){
+      const y = h - (h * i/3);
+      ctx.beginPath();
+      ctx.moveTo(0,y);
+      ctx.lineTo(w,y);
+      ctx.stroke();
+    }
+
+    // gradient fill under line
+    const grad = ctx.createLinearGradient(0,0,0,h);
+    grad.addColorStop(0, 'rgba(255,93,93,0.25)');
+    grad.addColorStop(1, 'rgba(255,93,93,0.0)');
+
+    ctx.beginPath();
+    visible.forEach((r, i) => {
+      const x = ((r.t - t0)/totalMs) * w;
+      const y = h - ((r.bpm - lo)/range) * h;
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle = '#ff5d5d';
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // last point dot
+    const last = visible[visible.length-1];
+    const lastX = w;
+    const lastY = h - ((last.bpm - lo)/range) * h;
+    ctx.beginPath();
+    ctx.arc(lastX-3, lastY, 4, 0, Math.PI*2);
+    ctx.fillStyle = '#ff5d5d';
+    ctx.fill();
+
+    if (chartRange === 'all'){
+      chartTimeStart.textContent = '0:00';
+      chartTimeEnd.textContent = fmtTime(totalMs/1000);
+    } else {
+      chartTimeStart.textContent = chartRange === '1' ? '-1:00' : '-5:00';
+      const fullElapsed = (nowT - readings[0].t) / 1000;
+      chartTimeEnd.textContent = fmtTime(fullElapsed);
+    }
+  }
+
+  // Estimación de gasto calórico por minuto (fórmula de Keytel et al., 2005)
+  function kcalPerMinute(hr, weightKg, age, sex){
+    if (sex === 'M'){
+      return (-55.0969 + 0.6309*hr + 0.1988*weightKg + 0.2017*age) / 4.184;
+    }
+    return (-20.4022 + 0.4472*hr - 0.1263*weightKg + 0.074*age) / 4.184;
+  }
+
+  function updateZone(bpm){
+    const pct = bpm / ASSUMED_MAX;
+    let z, label;
+    if (pct < 0.6) { z=1; label='Muy ligera'; }
+    else if (pct < 0.7) { z=2; label='Ligera'; }
+    else if (pct < 0.8) { z=3; label='Moderada'; }
+    else if (pct < 0.9) { z=4; label='Intensa'; }
+    else { z=5; label='Máxima'; }
+    zoneVal.textContent = `Z${z} · ${label}`;
+  }
+
+  function onHeartRate(bpm){
+    const now = Date.now();
+    if (!startTime) startTime = now;
+    readings.push({ t: now, bpm });
+    sum += bpm; count++;
+    minBpm = Math.min(minBpm, bpm);
+    maxBpm = Math.max(maxBpm, bpm);
+
+    // Acumula calorías y tiempo activo/descanso usando el tiempo transcurrido desde la última lectura
+    const weight = parseFloat(inputWeight.value) || 65;
+    const age = parseFloat(inputAge.value) || 25;
+    const sex = inputSex.value;
+    if (lastReadingTime){
+      const elapsedMs = now - lastReadingTime;
+      const elapsedMin = elapsedMs / 60000;
+      const rate = Math.max(kcalPerMinute(bpm, weight, age, sex), 0);
+      totalKcal += rate * elapsedMin;
+    }
+    lastReadingTime = now;
+
+    bpmNumber.textContent = bpm;
+    statMin.textContent = minBpm;
+    statAvg.textContent = Math.round(sum/count);
+    statMax.textContent = maxBpm;
+    statKcal.textContent = Math.round(totalKcal);
+    updateZone(bpm);
+
+    heartIcon.classList.remove('beat');
+    void heartIcon.offsetWidth;
+    heartIcon.classList.add('beat');
+
+    resizeCanvasIfNeeded();
+    drawChart();
+  }
+
+  let sizedOnce = false;
+  function resizeCanvasIfNeeded(){
+    if (!sizedOnce){
+      resizeCanvas();
+      sizedOnce = true;
+    }
+  }
+
+  function parseHeartRate(value){
+    // value: DataView per Bluetooth Heart Rate Measurement spec
+    const flags = value.getUint8(0);
+    const rate16 = flags & 0x1;
+    let bpm;
+    if (rate16){
+      bpm = value.getUint16(1, /*littleEndian=*/true);
+    } else {
+      bpm = value.getUint8(1);
+    }
+    return bpm;
+  }
+
+  function setStatus(text, mode){
+    statusText.textContent = text;
+    statusDot.className = 'dot' + (mode ? ' ' + mode : '');
+  }
+
+  async function connect(){
+    try {
+      setStatus('Buscando dispositivo…', 'on');
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: ['heart_rate'] }]
+      });
+
+      device.addEventListener('gattserverdisconnected', () => {
+        setStatus('Desconectado', '');
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Conectar dispositivo';
+        connectBtn.style.display = 'inline-block';
+        disconnectBtn.style.display = 'none';
+      });
+
+      setStatus(`Conectando a ${device.name || 'dispositivo'}…`, 'on');
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService('heart_rate');
+      const characteristic = await service.getCharacteristic('heart_rate_measurement');
+
+      await characteristic.startNotifications();
+      characteristic.addEventListener('characteristicvaluechanged', (event) => {
+        const bpm = parseHeartRate(event.target.value);
+        onHeartRate(bpm);
+        setStatus(`En vivo — ${device.name || 'dispositivo'}`, 'live');
+      });
+
+      connectBtn.textContent = 'Conectado';
+      connectBtn.disabled = true;
+      connectBtn.style.display = 'none';
+      disconnectBtn.style.display = 'inline-block';
+      resetBtn.disabled = false;
+
+      if (!timerInterval){
+        timerInterval = setInterval(() => {
+          if (startTime){
+            statTime.textContent = fmtTime((Date.now() - startTime)/1000);
+          }
+        }, 1000);
+      }
+
+    } catch (err) {
+      console.error(err);
+      setStatus('No se pudo conectar', '');
+      connectBtn.disabled = false;
+    }
+  }
+
+  function resetSession(){
+    readings = [];
+    sum = 0; count = 0; minBpm = Infinity; maxBpm = -Infinity;
+    totalKcal = 0; lastReadingTime = null;
+    startTime = Date.now();
+    statMin.textContent = '--';
+    statAvg.textContent = '--';
+    statMax.textContent = '--';
+    statTime.textContent = '0:00';
+    statKcal.textContent = '0';
+    zoneVal.textContent = '—';
+    chartTimeStart.textContent = '0:00';
+    chartTimeEnd.textContent = '0:00';
+    drawChart();
+  }
+
+  function disconnect(){
+    if (device && device.gatt && device.gatt.connected){
+      device.gatt.disconnect();
+      // gattserverdisconnected listener handles the UI reset
+    }
+  }
+
+  connectBtn.addEventListener('click', connect);
+  disconnectBtn.addEventListener('click', disconnect);
+  resetBtn.addEventListener('click', resetSession);
+
+  rangeToggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-range]');
+    if (!btn) return;
+    chartRange = btn.dataset.range;
+    [...rangeToggle.querySelectorAll('button')].forEach(b => b.classList.toggle('active', b === btn));
+    drawChart();
+  });
+
+  if (!('bluetooth' in navigator)){
+    setStatus('Este navegador no soporta Web Bluetooth', '');
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'No disponible en este navegador';
+  }
+
+  window.addEventListener('load', resizeCanvas);
+})();
+</script>
+</body>
+</html>
